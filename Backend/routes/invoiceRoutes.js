@@ -1,4 +1,3 @@
-
 const express = require('express');
 const Invoice = require('../models/Invoice');
 const path = require('path');
@@ -6,25 +5,22 @@ const fs = require('fs');
 
 const router = express.Router();
 
-
+// list invoices (pagination optional)
 router.get('/', async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 20;
-    const page = parseInt(req.query.page) || 1;
-    const skip = (page - 1) * limit;
-    const total = await Invoice.countDocuments();
-    const invoices = await Invoice.find().sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
-    res.json({ success: true, invoices, total, page, pages: Math.ceil(total / limit) });
+    const limit = parseInt(req.query.limit) || 50;
+    const invoices = await Invoice.find().sort({ createdAt: -1 }).limit(limit);
+    res.json({ success: true, invoices });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: 'Failed to fetch invoices' });
   }
 });
 
-
+// get single invoice
 router.get('/:id', async (req, res) => {
   try {
-    const inv = await Invoice.findById(req.params.id).lean();
+    const inv = await Invoice.findById(req.params.id);
     if (!inv) return res.status(404).json({ success: false, error: 'Not found' });
     res.json({ success: true, invoice: inv });
   } catch (err) {
@@ -33,7 +29,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-
+// download invoice JSON
 router.get('/:id/download-json', async (req, res) => {
   try {
     const inv = await Invoice.findById(req.params.id).lean();
@@ -48,7 +44,7 @@ router.get('/:id/download-json', async (req, res) => {
   }
 });
 
-
+// download original image
 router.get('/:id/download-image', async (req, res) => {
   try {
     const inv = await Invoice.findById(req.params.id).lean();

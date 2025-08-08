@@ -1,35 +1,76 @@
 const fs = require('fs');
 const path = require('path');
+const Tesseract = require('tesseract.js');
+const axios = require('axios');
 const Invoice = require('../models/Invoice');
-const { GoogleGenerativeAI } = require('@google/generative-ai'); 
 require('dotenv').config();
+
 
 function safeParseJson(text) {
   if (!text) return null;
-  // Trim obvious code fences
-  text = text.replace(/```json|```/g, '').trim();
-  // Try direct parse
-  try { return JSON.parse(text); } catch (e) {}
-  // Try to extract first {...}
-  const m = text.match(/{[\s\S]*}/);
+  let t = text.replace(/```json|```/g, '').trim();
+  try { return JSON.parse(t); } catch (e) {}
+  // fallback: extract first {...}
+  const m = t.match(/{[\s\S]*}/);
   if (m) {
     try { return JSON.parse(m[0]); } catch (e) {}
   }
   return null;
 }
 
+
+async function callGroq(prompt) {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error('GROQ_API_KEY not set in .env');
+
+  const url = 'https://api.groq.com/openai/v1/chat/completions';
+  const model = process.env.GROQ_MODEL || 'llama3-70b-8192';
+
+  const payload = {
+    model,
+    messages: [
+      { role: 'system', content: 'You are a helpful assistant that extracts structured data from invoice text. Return JSON ONLY.' },
+      { role: 'user', content: prompt }
+    ],
+    temperature: 0,
+    max_tokens: 2000,
+  };
+
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+  };
+
+  const resp = await axios.post(url, payload, { headers, timeout: 120000 });
+  // path: resp.data.choices[0].message.content (OpenAI-style)
+  return resp?.data?.choices?.[0]?.message?.content ?? '';
+}
+
 exports.processInvoice = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, error: 'No file uploaded' });
 
-    // read file
+    //  Read image file
     const filePath = path.resolve(req.file.path);
     const buffer = fs.readFileSync(filePath);
-    const base64 = buffer.toString('base64');
 
-    // build prompt describing the expected JSON output
-    const prompt = `
-You are an assistant that extracts invoice fields. Given the image attached, return JSON only with the following fields:
+    //  OCR with Tesseract
+    const workerPromise = Tesseract.recognize(filePath, 'eng', {
+      logger: m => { /* optional logging: console.log(m) */ }
+    });
+
+    const ocrResult = await workerPromise;
+    const rawText = ocrResult?.data?.text?.trim() || '';
+
+    // If OCR returns nothing, fail gracefully
+    if (!rawText) {
+      return res.status(500).json({ success: false, error: 'OCR produced empty text' });
+    }
+
+    //  Build prompt for Groq
+    const userPrompt = `
+You are an invoice extractor. Given the OCR text below, extract the following fields and return a JSON object **only** in this exact shape:
+
 {
   "Invoice Number": { "value": "...", "confidence": "0-100" },
   "Date Issued": { "value": "...", "confidence": "0-100" },
@@ -40,59 +81,75 @@ You are an assistant that extracts invoice fields. Given the image attached, ret
     { "description": "...", "quantity": "...", "unitPrice": "...", "confidence": "0-100" }
   ]
 }
-Return only JSON. If a field is missing, set its value to empty string and confidence to 0.
+
+For any missing field, set "value": "" and "confidence": 0.
+Here is the OCR'd text (do not invent fields not present; use best guess and assign confidence):
+-------------------------
+${rawText}
+-------------------------
+Return only JSON.
 `;
 
-    // instantiate Gemini client and model
-    const client = new GoogleGenerativeAI({ apiKey: process.env.GEMINI_API });
-    const model = client.getGenerativeModel({ model: 'gemini-pro-vision' });
+    //  Call Groq API
+    const modelText = await callGroq(userPrompt);
 
-    // call the model with inline image data
-    const result = await model.generateContent([
-      prompt,
-      {
-        inlineData: {
-          mimeType: req.file.mimetype,
-          data: base64,
-        },
-      },
-    ]);
+    //  Attempt to parse robustly
+    const parsed = safeParseJson(modelText);
 
-    // result.response may be a promise-like; we attempt to read text
-    const response = await result.response;
-    // `response.text()` returns the string output
-    const text = typeof response.text === 'function' ? response.text() : (response.outputText || '');
+    // If parsing failed, return full response for manual inspection
+    if (!parsed) {
+      // Save record with rawResponse for debugging
+      const invoiceDoc = {
+        invoiceNumber: '',
+        dateIssued: '',
+        vendorName: '',
+        totalAmount: '',
+        tax: '',
+        lineItems: [],
+        confidences: {},
+        rawText,
+        rawResponse: modelText,
+        filePath,
+        originalFileName: req.file.originalname,
+      };
+      const saved = await Invoice.create(invoiceDoc);
+      return res.status(200).json({
+        success: true,
+        invoice: saved,
+        warning: 'Could not parse model output as JSON. Raw model output saved in rawResponse for inspection.',
+        rawModelOutput: modelText
+      });
+    }
 
-    // try parse
-    const parsed = safeParseJson(text);
-
-    // Build document to save
+    //  Build invoice doc from parsed JSON (defensive)
     const invoiceDoc = {
       invoiceNumber: parsed?.['Invoice Number']?.value || '',
       dateIssued: parsed?.['Date Issued']?.value || '',
       vendorName: parsed?.['Vendor Name']?.value || '',
       totalAmount: parsed?.['Total Amount']?.value || '',
       tax: parsed?.['Tax']?.value || '',
-      lineItems: parsed?.['Line Items'] || [],
+      lineItems: Array.isArray(parsed?.['Line Items']) ? parsed['Line Items'] : [],
       confidences: {
-        invoiceNumber: parsed?.['Invoice Number']?.confidence || parsed?.['Invoice Number']?.confidence || '',
-        dateIssued: parsed?.['Date Issued']?.confidence || '',
-        vendorName: parsed?.['Vendor Name']?.confidence || '',
-        totalAmount: parsed?.['Total Amount']?.confidence || '',
-        tax: parsed?.['Tax']?.confidence || '',
+        invoiceNumber: parsed?.['Invoice Number']?.confidence || 0,
+        dateIssued: parsed?.['Date Issued']?.confidence || 0,
+        vendorName: parsed?.['Vendor Name']?.confidence || 0,
+        totalAmount: parsed?.['Total Amount']?.confidence || 0,
+        tax: parsed?.['Tax']?.confidence || 0,
       },
-      rawResponse: text || '',
-      filePath: filePath,
+      rawText,
+      rawResponse: modelText,
+      filePath,
       originalFileName: req.file.originalname,
     };
 
-    // save to DB
+    // Save to DB
     const saved = await Invoice.create(invoiceDoc);
 
-    res.json({ success: true, invoice: saved });
+    //  Respond with saved invoice
+    return res.json({ success: true, invoice: saved });
 
   } catch (err) {
     console.error('processInvoice error:', err);
-    res.status(500).json({ success: false, error: 'Processing failed', details: err.message });
+    return res.status(500).json({ success: false, error: 'Processing failed', details: err.message });
   }
 };

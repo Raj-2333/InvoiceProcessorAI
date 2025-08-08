@@ -1,4 +1,3 @@
-
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
@@ -13,11 +12,11 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, 
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    if (['.jpg', '.jpeg', '.png', '.pdf'].includes(ext)) cb(null, true);
-    else cb(new Error('Only JPG / JPEG / PNG / PDF allowed'));
+    if (['.jpg', '.jpeg', '.png'].includes(ext)) cb(null, true);
+    else cb(new Error('Only JPG / JPEG / PNG files allowed'));
   }
 });
 

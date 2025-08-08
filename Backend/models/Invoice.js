@@ -1,10 +1,10 @@
-
 const mongoose = require('mongoose');
 
 const lineItemSchema = new mongoose.Schema({
   description: String,
   quantity: String,
   unitPrice: String,
+  confidence: String,
 });
 
 const invoiceSchema = new mongoose.Schema({
@@ -15,8 +15,9 @@ const invoiceSchema = new mongoose.Schema({
   tax: String,
   lineItems: [lineItemSchema],
   confidences: mongoose.Schema.Types.Mixed, 
-  rawResponse: String,
-  filePath: String,
+  rawText: String,      
+  rawResponse: String,  
+  filePath: String,     
   originalFileName: String,
   createdAt: { type: Date, default: Date.now },
 });
