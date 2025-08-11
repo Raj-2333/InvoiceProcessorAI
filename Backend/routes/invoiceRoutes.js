@@ -44,18 +44,18 @@ router.get('/:id/download-json', async (req, res) => {
   }
 });
 
-// download original image
-router.get('/:id/download-image', async (req, res) => {
-  try {
-    const inv = await Invoice.findById(req.params.id).lean();
-    if (!inv) return res.status(404).json({ success: false, error: 'Not found' });
-    const filePath = path.resolve(inv.filePath);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: 'File missing' });
-    res.download(filePath, inv.originalFileName || path.basename(filePath));
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Download failed' });
-  }
-});
+// // download original image
+// router.get('/:id/download-image', async (req, res) => {
+//   try {
+//     const inv = await Invoice.findById(req.params.id).lean();
+//     if (!inv) return res.status(404).json({ success: false, error: 'Not found' });
+//     const filePath = path.resolve(inv.filePath);
+//     if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: 'File missing' });
+//     res.download(filePath, inv.originalFileName || path.basename(filePath));
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ success: false, error: 'Download failed' });
+//   }
+// });
 
 module.exports = router;

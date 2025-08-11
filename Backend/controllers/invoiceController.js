@@ -46,26 +46,46 @@ async function callGroq(prompt) {
   return resp?.data?.choices?.[0]?.message?.content ?? '';
 }
 
+// exports.processInvoice = async (req, res) => {
+//   try {
+//     if (!req.file) return res.status(400).json({ success: false, error: 'No file uploaded' });
+
+//     //  Read image file
+//     const filePath = path.resolve(req.file.path);
+//     const buffer = fs.readFileSync(filePath);
+
+//     //  OCR with Tesseract
+//     const workerPromise = Tesseract.recognize(filePath, 'eng', {
+//       logger: m => { /* optional logging: console.log(m) */ }
+//     });
+
+//     const ocrResult = await workerPromise;
+//     const rawText = ocrResult?.data?.text?.trim() || '';
+
+//     // If OCR returns nothing, fail gracefully
+//     if (!rawText) {
+//       return res.status(500).json({ success: false, error: 'OCR produced empty text' });
+//     }
+
 exports.processInvoice = async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ success: false, error: 'No file uploaded' });
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No file uploaded' });
+    }
 
-    //  Read image file
-    const filePath = path.resolve(req.file.path);
-    const buffer = fs.readFileSync(filePath);
+    console.log(`Processing file in memory: ${req.file.originalname}, ${req.file.size} bytes`);
 
-    //  OCR with Tesseract
-    const workerPromise = Tesseract.recognize(filePath, 'eng', {
-      logger: m => { /* optional logging: console.log(m) */ }
+    // OCR directly from memory buffer
+    const ocrResult = await Tesseract.recognize(req.file.buffer, 'eng', {
+      logger: m => { /* console.log(m) */ }
     });
 
-    const ocrResult = await workerPromise;
     const rawText = ocrResult?.data?.text?.trim() || '';
 
-    // If OCR returns nothing, fail gracefully
     if (!rawText) {
       return res.status(500).json({ success: false, error: 'OCR produced empty text' });
     }
+
 
     //  Build prompt for Groq
     const userPrompt = `
@@ -138,7 +158,7 @@ Return only JSON.
       },
       rawText,
       rawResponse: modelText,
-      filePath,
+      filePath:'',
       originalFileName: req.file.originalname,
     };
 
