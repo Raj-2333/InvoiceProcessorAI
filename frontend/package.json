@@ -43,7 +43,7 @@
     ]
   },
   
-  "proxy": "http://localhost:5000"
+  "proxy": "https://invoiceprocessor-backend.onrender.com"
 
   
 }

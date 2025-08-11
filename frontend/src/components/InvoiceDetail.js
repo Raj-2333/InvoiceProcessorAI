@@ -15,7 +15,7 @@ const InvoiceDetail = () => {
 
   const fetchInvoice = async () => {
     try {
-      const res = await axios.get(`http://localhost:5000/api/invoices/${id}`);
+      const res = await axios.get(`https://invoiceprocessor-backend.onrender.com/api/invoices/${id}`);
       setInvoice(res.data.invoice);
     } catch (err) {
       console.error(err);
@@ -24,8 +24,8 @@ const InvoiceDetail = () => {
 
   if (!invoice) return <Typography>Loading...</Typography>;
 
-  const downloadJson = () => window.open(`http://localhost:5000/api/invoices/${id}/download-json`, '_blank');
-  const downloadImage = () => window.open(`http://localhost:5000/api/invoices/${id}/download-image`, '_blank');
+  const downloadJson = () => window.open(`https://invoiceprocessor-backend.onrender.com/api/invoices/${id}/download-json`, '_blank');
+  const downloadImage = () => window.open(`https://invoiceprocessor-backend.onrender.com/api/invoices/${id}/download-image`, '_blank');
 
   return (
     <Box>

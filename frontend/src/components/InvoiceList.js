@@ -17,7 +17,7 @@ const InvoiceList = () => {
 
   const fetchInvoices = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/invoices?limit=50');
+      const res = await axios.get('https://invoiceprocessor-backend.onrender.com/api/invoices?limit=50');
       setInvoices(res.data.invoices || []);
     } catch (err) {
       console.error(err);
@@ -25,11 +25,11 @@ const InvoiceList = () => {
   };
 
   const downloadJson = (id) => {
-    window.open(`http://localhost:5000/api/invoices/${id}/download-json`, '_blank');
+    window.open(`https://invoiceprocessor-backend.onrender.com/api/invoices/${id}/download-json`, '_blank');
   };
 
   const downloadImage = (id) => {
-    window.open(`http://localhost:5000/api/invoices/${id}/download-image`, '_blank');
+    window.open(`https://invoiceprocessor-backend.onrender.com/api/invoices/${id}/download-image`, '_blank');
   };
 
   return (
